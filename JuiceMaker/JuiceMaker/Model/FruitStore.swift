@@ -20,16 +20,15 @@ class FruitStore {
         }
     }
     
-    private init(defaultStock: Int) {
-        fruitInventory = Dictionary(uniqueKeysWithValues: zip(Fruits.allCases, Fruits.allCases.map { _ in defaultStock }))
+    var defaultStock: Int = 10
+    
+    private init() {
+        fruitInventory = Dictionary(uniqueKeysWithValues: zip(Fruits.allCases, Array(repeating: defaultStock, count: Fruits.allCases.count)))
     }
     
-    private convenience init() {
-        self.init(defaultStock: 10)
-    }
-    
-    static func resetInventory(By defaultStock: Int) {
-        shared = FruitStore(defaultStock: defaultStock)
+    static func resetInventory(by defaultStock: Int) {
+        shared = FruitStore()
+        shared.defaultStock = defaultStock
     }
     
     func add(fruit: Fruits, of count: Int) {

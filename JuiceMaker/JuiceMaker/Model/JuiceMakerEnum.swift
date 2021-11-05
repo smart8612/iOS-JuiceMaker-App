@@ -14,10 +14,6 @@ enum Fruits: CaseIterable {
     case pineapple
     case kiwi
     case mango
-    
-    var description: String {
-        return String(describing: self)
-    }
 }
 
 enum Juice: CaseIterable {
@@ -46,10 +42,6 @@ enum Juice: CaseIterable {
         case .kiwiMangoJuice:
             return [.mango: 2, .kiwi: 1]
         }
-    }
-
-    var description: String {
-        return String(describing: self)
     }
     
     var translatedDescription: String {
