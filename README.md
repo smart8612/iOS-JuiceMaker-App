@@ -82,6 +82,7 @@
 
 * 초기화면에서 주스주문 버튼을 클릭하면 해당 주스를 만듭니다. 
 * 만약 재고가 부족하다면 재고 수정화면으로 이동하여 재고 관리를 진행합니다.
+* 주스를 주문하는 경우 property observer 와 NotificationCenter 를 통해 View를 갱신합니다.
 * Pull Request : Reviewed By 👩🏻‍💻 [@delmaSong](https://github.com/delmaSong) [Step 2 Pull Request Link](https://github.com/yagom-academy/ios-juice-maker/pull/129)
 
 ### [Step 3]
@@ -193,7 +194,7 @@
         - convenience initializer를 통해 과일 기본 재고 현황값을 설정하는 방법은 다음과 같습니다.
 
             * convenience initializer는 desingnated initializer를 보조하여 만들어진 것입니다.
-            * designated initializer의 파라미터 중 일부를 기본값으로 설정하여 호출하여 인스턴스를 생성합니다.
+            * designated initializer의 파라미터 중 일부를 기본값으로 설정후 호출하여 인스턴스를 생성합니다.
             * 과일의 기본 재고 값을 변경하기 위해서 본래 생성자의 argument 로 넘겨주는 값을 수정해주면 됩니다.
             * designated 생성자 내부 수정 없이 convenience 생성자만 수정하여 요구사항을 반영 가능한 장점이 있습니다.
 
@@ -249,63 +250,190 @@
 
 ---
 
-## [Step 2 - 3] **초기 화면 ,** 재고 관리 기능 **구현**
-
-![스크린샷 2021-11-05 오후 3 03 32](https://user-images.githubusercontent.com/40068674/140484156-902ee3c0-1ebc-46a9-b1c8-e0b4f5758bae.png)
-
-![스크린샷 2021-11-05 오후 5 55 17](https://user-images.githubusercontent.com/40068674/140484304-d9cf9bb8-d3dc-4ffe-aee8-e8a0e85034d3.png)
 
 
-### keyword
+### [Step 2️⃣] 초기 화면 기능 구현
+
+
+
+#### Keyword
 
 - ViewController & NavigationController
 - NotificationCenter
 - 데이터 중심의 Programming (데이터 무결성을 위한)
 - Customize UI Class
 
+#### 고민 했던 부분
+
+* **쥬스 주문 화면과 재고 수정 화면 간의 이동 방식을 선택하기 위한 접근 과정**
+
+  * 두 화면간의 관계(정보의 흐름)이 계층적 관계 혹은 카테고리 별로 나뉘지 않은 경우로 판단했습니다.
+
+  * 현재 주문하는 작업과는 다르지만 재고를 관리하는 측면에서 사람들을 집중시는 것이 중요하다고 생각하여 Modality 를 적용했습니다.
+
+    > **Use modality when it makes sense.** Create a modal experience only when it’s critical to **focus people’s attention** on making a choice or performing a task that’s different from their current task. 
+    > \- [Human Interface Guideline - Modality](https://developer.apple.com/design/human-interface-guidelines/ios/app-architecture/modality/)
+
+
+
+* **Alert Controller 를 재사용 가능한 형태로 작성하기 위한 접근 과정**
+
+  * 쥬스 주문 화면에서 주스를 주문했을 때 주스를 제조하는데 성공 혹은 실패한 경우 Alert 창을 띄어줍니다.
+  * 타이틀, 메시지 확인 버튼 클릭시 동작을 제외하고는 공통적으로 사용되는 코드이기 때문에 재사용 가능한 함수로 정의하였습니다.
+
+  ```swift
+  private func showAlert(title: String, message: String, handler: ((UIAlertAction) -> Void)? = nil ) {
+      let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+  
+      let alertOk = UIAlertAction(title: "확인", style: .default, handler: handler)
+      let alertCancel = UIAlertAction(title: "취소", style: .cancel, handler: nil)
+  
+      alert.addAction(alertOk)
+      alert.addAction(alertCancel)
+  
+      present(alert, animated: true, completion: nil)
+  }
+  ```
+
+  
+
+#### 개선시킨 부분
+
+* **UI를 식별하는 방법으로 사용한 `restorationIdentifier` 대신 `String` 타입의 `id` 지정을 통한 View 식별**
+
+  * 공식문서 상 `restorationIdentifier`는 상태 복원을 지원하는지를 결정하는 식별자라고 정의하면서 상태를 저장하고 복원하기 위해 `encodeRestorableState(with:)`, `decodeRestorableState(with:)`메서드를 사용하는 경우에만 값을 할당해야합니다.
+
+    > Assign a value to this property only if you are implementing a custom view that implements the encodeRestorableState(with:) and decodeRestorableState(with:) methods for saving and restoring state. You use those methods to write any view-specific state information and subsequently use that data to restore the view to its previous configuration.
+
+  * 따라서 restorationIdentifier를 걷어내고 사용자 정의 UI class 를 통해 `String` 타입의 ID값을 설정해주었습니다.
+
+    ```swift
+    class FruitLabel: UILabel {
+        var fruitID: String?
+    }
+    ```
+
+  
+
+* **전역 변수로 선언된 Notification Center 메시지를 타입 프로퍼티로 확장하여 관리**
+
+  * 전역 변수를 잘못 사용할 경우 프로젝트 내에서 의도치 않은 변경이 발생할 수 있습니다.
+  * Notification.Name 타입의 프로퍼티로 extension 하여 사용하는 방식으로 코드를 개선시켰습니다.
+  * 코드를 사용하는 측면에서 이미 타입을 알고 있는 경우 `.changedInventory` 로 접근할 수 있어서 편리해졌습니다.
+
+  ```swift
+  extension Notification.Name {
+      static let changedInventory = Notification.Name("changedInventory")
+  }
+  ```
+
+  
+
 ---
 
-### 코드 구현 과정
 
-**Problem** 
 
-`UILabel` 이나 `UIStepper` 같은 View 컴포넌트와 Model 데이터가 동일한 상태를 갖도록 동기화 하는 방법
+### [Step 3️⃣] 재고 수정 기능 구현
 
-**Solution**
 
-사용자의 터치를 입력받아 모델을 업데이트하고 업데이트 된 모델을 기반으로 뷰를 업데이트하여 데이터의 흐름을 컨트롤하였습니다. 세부 구현 방식은 다음과 같습니다.
 
-1. UI 컴포넌트를 식별할 수 있는 ID로 Fruit와 Juice 를 갖는 Custom UI 클래스를 정의해주었습니다.
-2. ViewController는 View가 로드되는 시점에서 UI 컴포넌트에 연관된 Fruit, Juice를 알 수 있도록 KindOfFruit 값을 부여해줍니다.
-3. Model 의 `fruitInventory` 에 있는 모든 재고 현황 데이터를 기준으로 View 를 갱신합니다.
-    - FruitStore Model의 Singleton 인스턴스 를 통해 FruitInventory 를 접근하면서 모든 과일에 대한 재고 현황에 접근합니다.
-    - 모델에서 찾은 Fruit 종류와 View 의 식별자에 담긴 Fruit, Juice 를 비교해서 동일한 경우 모델의 해당 Fruit의 재고를 해당 View 에 반영했습니다.
-4. 사용자가 주스 주문 버튼이나 과일 재고 변경 Stepper 를 사용하여 과일의 재고 현황이 변동되는 경우 Model 은 NotificationCenter를 통해 자신의 정보가 변경되었음을 broadcast 합니다. 
-5. broadcast 된 이벤트를 구독하는 View 는 모델에서 다시 값을 불러와서 자신의 정보를 업데이트합니다.
-6. 이와 같은 루틴이 반복됩니다.
+#### Keyword
 
-### 데이터 중심의 Programming
+- NavigationController & Bar Buttons
+- NotificationCenter & PropertyObserver
+- Customize UI Class & Identifier
+- Data - View syncronization
 
-기존의 UIKit에서 사용하는 ViewLifeCycle이나 Segue 방식을 통해 컨트롤러 사이에 데이터를 전달하면 서로 다른 컨트롤러끼리 의존성이 생겨서 특정 이벤트가 발생되지 않을 경우 데이터가 정상적으로 동기화 되지 않거나 데이터를 동기화시키기 위해 매번 View를 갱신하는 메서드를 호출해야 한다는 단점이 존재했습니다.
 
-이점에서 Stepper 는 자신도 값을 가지면서 모델의 값도 변경시키기 때문에 기존의 방식으로 다루기에 까다롭다는 문제점이 있었습니다. Stepper 의 값이 바뀔때마다 모델의 데이터가 바뀌고 바뀐 결과가 항상 Stepper와 일치함을 보장하려면 어떻게 해야하는지 고민하는 View 와 Model 사이에 **데이터 동기화 문제**가 발생하게 된 것입니다.
 
-이 문제를 해결하기위해 데이터를 감시하다가 데이터가 변경되는 것을 기준으로 View 에 데이터의 변동사항을 반영하는 것이 매우 효율적인 방법이라고 생각했습니다.
+#### 고민 했던 부분
 
-Stepper 에 위 개념을 적용해본다면 사용자가 Stepper 를 터치하여 값을 변경하면 Model의 재고 현황을 갱신하고 Model이 변경되면 Notification Center 를 통해 이벤트가 발생하게 되며 다시 레이블과 stepper의 값을 갱신하기 때문에 언제나 모델과 Stepper의 값은 일치하게 됩니다. 즉, 동기화 문제에서 벗어날 수 있게되었습니다.
+[![Screen Shot 2021-11-29 at 9 13 55 PM](https://user-images.githubusercontent.com/25794814/143866322-b4a26f7f-3671-4a88-9151-266b21f7d4a7.png)](https://github.com/yagom-academy/ios-juice-maker/pull/129#discussion_r739633143)
 
-### 고민했던 부분
+* **FruitStore의 과일 재고 데이터를 기준으로 쥬스 주문 화면과 재고 수정 화면의 View를 갱신하기위한 접근과정**
 
-**Customize UI 클래스를 이용한 View 식별**
+  * Stepper 처럼 자신의 값과 모델의 값을 동시에 변경하는 경우 UI와 Model은 동일한 데이터를 보여줘야합니다.
+  * Stepper의 값과 모델의 데이터 값이 일치하도록 동기화시키는 방법에 관하여 고민해보았습니다.
+  * Stepper의 값이 변경될 때 모델의 데이터값을 갱신한 후 결과값을 다시 Stepper에 반영해주는 접근 방법으로 동기화 문제를 해결하였습니다.
 
-`RestorationIdentifier` 를 걷어내고 UIStepper, UILabel , UIButton 을 상속받는 Custom Class에 Fruit와 Juice enum 인스턴스를 담는 프로퍼티를 선언하여 View에 해당하는 데이터를 식별하는 방식을 적용했습니다.
+  
 
-기존에는 String 을 통해 Fruit 혹은 Juice에 해당하는 네이밍 컨벤션을 지정하여 ViewController 에서 String 에 대응되는 Fruit 혹은 Juice enum 인스턴스를 찾도록 구현해두었는데 개선된 방식을 채택하여 String을 비교하는 복잡한 코드를 제거할 수 있었습니다.
+* **사용자 정의 UI 클래스를 통해 View에 식별자를 추가하는 접근과정**
 
-**View와 Model의 독립적인 구현**
+  * 초기 구현에서는 `String` 을 통해 id 값에 관한 naming 컨벤션을 지정하여 대응되는 `Fruit` 나 ` Juice` 찾았습니다.
+  * 사용자 정의 UI 클래스의 식별자를 지정해주는 방식으로 String을 비교하는 복잡한 코드를 제거할 수 있었습니다.
+  * `UIStepper` `UILabel` `UIButton` 을 상속받는 사용자 정의 `class` 를 선언해주었습니다.
+  * `Fruit`와 `Juice` 타입의 프로퍼티를 식별자로 갖도록 선언해주어 View와 연관된 모델 데이터를 식별하였습니다.
 
-기존의 구조는 Storyboard View 에서 딸기, 바나나, 파인애플, 키위, 망고 라는 Model 데이터를 갖고 있으면서 순서를 정해주고 있었습니다. 
+  
 
-ViewController가 UI에 알맞는 데이터를 찾아서 갱신하는데 어려운 구조라고 생각했습니다. View에 주어진 데이터를 파악하고 모델 데이터를 파악한 데이터에 맞추어 변환해주는 작업을 수행해야하기 때문입니다.
+* **`UILabel` 이나 `UIStepper` 같은 View 컴포넌트와 Model 데이터가 동일한 상태를 유지하는 방법**
+  * 사용자의 터치를 입력받아 모델을 업데이트한 뒤에 다시 View를 업데이트하여 데이터의 흐름을 제어하였습니다.
+  * UI 컴포넌트를 식별하는 용도의 ID로 `Fruit`와` Juice` 를 갖도록 사용자 정의 UI 클래스를 정의했습니다.
+  * ViewController는 UI 컴포넌트와 관련된 `Fruit`와  `Juice`를 알 수 있도록 `kindOfFruit` 값을 설정해줍니다.
+  * `fruitInventory`를 Model 과 비교하여 관련 재고 데이터를 찾은 후 데이터를 기준으로 View 를 갱신합니다.
+    * `FruitStore` Model의 singleton 인스턴스 를 통해 FruitInventory 를 접근하면서 모든 과일에 대한 재고 현황을 살펴봅니다.
+    * Model의 Fruit 종류와 View의 kindOfFruit 값을 비교해서 동일한 경우 모델의 재고를 데이터를 View 에 반영시킵니다.
+  * 사용자가 주스 주문 버튼 혹은 과일 재고 변경 Stepper를 사용하여 과일의 재고 현황이 변동되는 경우 Model 은 NotificationCenter를 통해 자신의 정보가 변경되었음을 broadcast 합니다.
+  * broadcast 된 이벤트를 구독하는 ViewController 는 모델에서 데이터 값을 불러와서 View 정보를 업데이트합니다.
 
-따라서 스토리보드 상에 보이는 모든 View를 placeholder 처럼 생각하고 ViewController에서 View의 데이터에 해당하는 이모티콘과 id 값을 지정하는 방식으로 개선했습니다. 이 방식을 통해 View에 대한 요구사항이 변화된 경우 ViewController에서 요구사항에 맞춰서 View에 데이터를 담아주면 되기 때문에 View의 재사용성이 향상될 수 있다는 장점을 얻었습니다.
+
+
+* **View가 데이터 상태를 갖지 않도록 구현하는 방법**
+  * Storyboard의 Scene에서 딸기, 바나나, 파인애플, 키위, 망고 라는 Model 데이터를 가지며 순서를 정해주고 있어서 문제점이 존재합니다.
+  * ViewController가 View에 설정된 데이터를 파악해서 모델로 부터 관련 데이터를 불러온 뒤에 View 에서 요구하는 형식에 맞춰서 변환 작업을 하기 때문에 ViewController가 비효율적으로 동작하고 있다고 생각했습니다.
+  * Storyboard의 Scene에 존재하는 모든 View를 데이터를 담아주는 placeholder 처럼 생각하였습니다.
+  * ViewController에서 데이터를 기준으로 View가 가져야 하는 데이터와 id 값을 지정하도록 구현하였습니다.
+  * 요구사항이 변화된 경우 ViewController는 변화된 요구사항에 맞춰서 View에 데이터를 담아줄 수 있다는 장점이 있습니다.
+  * ViewController가 View와 관련된 기준을 알고 있기 때문에 Model 데이터를 효율적으로 반영시킬 수 있습니다.
+
+
+
+#### 개선 시킨 부분
+
+* **생성자에서 초기 과일 재고값을 지정해주는 방식에서 타입 메서드를 통해 초기 재고값을 지정하는 방식으로 구현했습니다.**
+
+  * 기존의 방식은 생성자가 private 로 막혀있어서 코드 상에서 변동 사항을 적용해줄 수 있는 방법이 존재하지 않았습니다.
+
+  * FruitStore singleton 인스턴스가 생성된 이후 코드에서 변경된 초기 재고값을 갖는 인스턴스로 변경해줄 방법을 제공할 필요가 있었습니다.
+
+  * 다음과 같은 타입 메서드를 선언하여 기본 재고 갯수를 변경하는 동작만 메서드로 구현해서 외부에 공개하는 접근 방식을 선택했습니다.
+
+    ```swift
+    static func resetInventory(By defaultStock: Int) {
+        shared = FruitStore(defaultStock: defaultStock)
+    }
+    ```
+
+* Swift API Guideline 에 맞춰서 변수나 메서드 명에 축약식 표현이 사용되지 않도록 변경해주었습니다.
+
+  * 기존에는 주스 열거형 인스턴스에 대해서 한국어 버전과 영문 버전을 KR, EN 접미사를 사용하여 구분해주었습니다.
+
+  * 영문 표현은 그냥 description 으로 사용하고 한글 표현은 translatedDescription 으로 구분하였습니다.
+
+    ```swift
+    var description: String {
+        return String(describing: self)
+    }
+    
+    var translatedDescription: String {
+        switch self {
+        case .strawberryJuice:
+            return "딸기 주스"
+        case .bananaJuice:
+            return "바나나 주스"
+        case .kiwiJuice:
+            return "키위 주스"
+        case .pineappleJuice:
+            return "파인애플 주스"
+        case .strawberryBananaJuice:
+            return "딸기바나나 주스"
+        case .mangoJuice:
+            return "망고 주스"
+        case .kiwiMangoJuice:
+            return "키위망고 주스"
+        }
+    }
+    ```
+
+    
